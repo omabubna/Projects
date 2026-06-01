@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SafariIQ — Wildlife Intelligence Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #080f0a;
+    --bg2: #0d1a0f;
+    --bg3: #111f13;
+    --panel: #13231693;
+    --panel-solid: #152918;
+    --border: #1e3d22;
+    --border-glow: #2a6632;
+    --text: #e8f5e9;
+    --text2: #7da882;
+    --text3: #4a7050;
+    --accent: #4cff7e;
+    --accent2: #22c55e;
+    --accent-dim: rgba(76,255,126,0.12);
+    --red: #ff4f4f;
+    --amber: #fbbf24;
+    --blue: #38bdf8;
+    --font-display: 'Syne', sans-serif;
+    --font-mono: 'Space Mono', monospace;
+    --font-body: 'Inter', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-body); overflow: hidden; }
+
+  /* Noise overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-rows: 52px 1fr;
+    grid-template-columns: 260px 1fr 280px;
+    height: 100vh;
+    position: relative; z-index: 1;
+  }
+
+  /* ── Header ── */
+  header {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(8,15,10,0.95);
+    backdrop-filter: blur(8px);
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-display); font-size: 18px; font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(1.3)} }
+
+  .header-stats { display: flex; gap: 24px; }
+  .hstat { text-align: center; }
+  .hstat-val { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--accent); }
+  .hstat-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; }
+
+  .status-badge {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px;
+    border: 1px solid var(--border-glow);
+    background: var(--accent-dim);
+    font-size: 12px; font-family: var(--font-mono);
+    color: var(--accent);
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
+  .status-badge.error { border-color: #7f2222; background: rgba(255,79,79,0.1); color: var(--red); }
+  .status-badge.error .status-dot { background: var(--red); }
+
+  /* ── Left Panel ── */
+  .panel-left {
+    padding: 16px;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    background: var(--bg2);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  .section-title {
+    font-family: var(--font-mono); font-size: 10px;
+    text-transform: uppercase; letter-spacing: 2px;
+    color: var(--text3); margin-bottom: 8px;
+  }
+
+  /* Mini Map */
+  .mini-map-container {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+  }
+  .mini-map-container canvas { width: 100%; display: block; }
+
+  /* Detection tags */
+  .animal-grid { display: flex; flex-direction: column; gap: 6px; }
+  .animal-tag {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    transition: border-color 0.2s;
+  }
+  .animal-tag.active { border-color: var(--accent2); background: rgba(34,197,94,0.08); }
+  .animal-tag-left { display: flex; align-items: center; gap: 8px; }
+  .animal-icon { font-size: 20px; }
+  .animal-name { font-size: 13px; font-weight: 500; color: var(--text); }
+  .animal-count { font-family: var(--font-mono); font-size: 11px; color: var(--text2); }
+  .animal-conf {
+    font-family: var(--font-mono); font-size: 11px;
+    padding: 2px 8px; border-radius: 10px;
+    background: var(--accent-dim); color: var(--accent);
+  }
+
+  /* ── Main Feed ── */
+  .main-center {
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--bg);
+  }
+
+  .feed-area {
+    flex: 1; position: relative; overflow: hidden;
+    background: #000;
+  }
+  .feed-area img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  .feed-overlay {
+    position: absolute; inset: 0; pointer-events: none;
+  }
+  /* Corner brackets */
+  .bracket {
+    position: absolute; width: 24px; height: 24px;
+    border-color: var(--accent); border-style: solid;
+    opacity: 0.7;
+  }
+  .bracket.tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; }
+  .bracket.tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; }
+  .bracket.bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; }
+  .bracket.br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+  .feed-info-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(transparent, rgba(0,0,0,0.85));
+    padding: 24px 16px 12px;
+    display: flex; justify-content: space-between; align-items: flex-end;
+  }
+  .feed-label { font-family: var(--font-mono); font-size: 11px; color: var(--text2); }
+  .feed-ts { font-family: var(--font-mono); font-size: 11px; color: var(--text3); }
+  .scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.4; animation: scan 3s linear infinite;
+  }
+  @keyframes scan { 0%{top:0%} 100%{top:100%} }
+
+  /* No signal placeholder */
+  .no-signal {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 12px; color: var(--text3);
+    font-family: var(--font-mono); font-size: 13px;
+  }
+  .no-signal-icon { font-size: 48px; opacity: 0.3; }
+
+  /* Bottom bar */
+  .detection-bar {
+    height: 48px; border-top: 1px solid var(--border);
+    background: var(--bg2);
+    display: flex; align-items: center;
+    padding: 0 16px; gap: 16px; overflow: hidden;
+  }
+  .det-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 10px; border-radius: 6px;
+    background: var(--panel); border: 1px solid var(--border);
+    font-size: 12px; white-space: nowrap;
+    animation: slideIn 0.3s ease;
+    transition: border-color 0.3s;
+  }
+  .det-item.wildlife { border-color: var(--accent2); background: rgba(34,197,94,0.08); }
+  @keyframes slideIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  .det-conf { font-family: var(--font-mono); font-size: 10px; color: var(--text2); }
+
+  /* ── Right Panel ── */
+  .panel-right {
+    padding: 16px;
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    background: var(--bg2);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  /* Alert log */
+  .alert-log { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+  .alert-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    font-size: 12px;
+    animation: slideIn 0.3s ease;
+  }
+  .alert-item.high { border-color: #7f5200; background: rgba(251,191,36,0.06); }
+  .alert-time { font-family: var(--font-mono); font-size: 10px; color: var(--text3); flex-shrink: 0; }
+  .alert-animal { font-weight: 500; color: var(--text); flex: 1; }
+  .alert-conf-badge {
+    font-family: var(--font-mono); font-size: 10px;
+    padding: 2px 6px; border-radius: 10px;
+    background: rgba(251,191,36,0.15); color: var(--amber);
+  }
+
+  /* System metrics */
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-card {
+    padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .metric-val { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--accent); }
+  .metric-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+
+  /* Zone map */
+  .zone-map {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px;
+  }
+  .zone-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .zone-cell {
+    padding: 8px; border-radius: 6px; border: 1px solid var(--border);
+    text-align: center; cursor: pointer;
+    transition: all 0.2s; font-size: 11px;
+    background: var(--panel);
+  }
+  .zone-cell:hover { border-color: var(--accent); background: var(--accent-dim); }
+  .zone-cell.active { border-color: var(--accent); background: var(--accent-dim); }
+  .zone-cell.alert { border-color: var(--amber); background: rgba(251,191,36,0.07); }
+  .zone-name { font-weight: 500; color: var(--text); font-size: 11px; }
+  .zone-count { font-family: var(--font-mono); font-size: 14px; color: var(--accent); font-weight: 700; }
+
+  /* Config panel */
+  .config-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .config-row:last-child { border-bottom: none; }
+  .config-lbl { font-size: 12px; color: var(--text2); }
+  .config-val { font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Chart */
+  .chart-wrap { height: 80px; position: relative; }
+  .chart-wrap canvas { width: 100% !important; }
+
+  /* IP input modal */
+  .setup-modal {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.88);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .setup-box {
+    background: var(--bg3); border: 1px solid var(--border-glow);
+    border-radius: 14px; padding: 28px 32px; width: 380px;
+    font-family: var(--font-body);
+  }
+  .setup-box h2 { font-family: var(--font-display); font-size: 20px; margin-bottom: 6px; }
+  .setup-box p { font-size: 13px; color: var(--text2); margin-bottom: 20px; }
+  .setup-box input {
+    width: 100%; padding: 10px 12px;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text);
+    font-family: var(--font-mono); font-size: 14px;
+    margin-bottom: 12px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .setup-box input:focus { border-color: var(--accent2); }
+  .setup-box button {
+    width: 100%; padding: 10px;
+    background: var(--accent2); border: none;
+    border-radius: 8px; color: #000; font-weight: 600;
+    font-size: 14px; cursor: pointer; transition: background 0.2s;
+  }
+  .setup-box button:hover { background: var(--accent); }
+  .setup-note { font-size: 11px; color: var(--text3); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- Setup Modal -->
+<div class="setup-modal" id="setupModal">
+  <div class="setup-box">
+    <h2>🌿 SafariIQ Setup</h2>
+    <p>Enter your Python backend server address. Run <code style="background:var(--bg2);padding:2px 6px;border-radius:4px;font-size:12px">python server.py</code> first on your PC.</p>
+    <input type="text" id="serverIpInput" placeholder="http://192.168.1.X:8000" value="http://localhost:8000"/>
+    <button onclick="connectServer()">Connect to Server</button>
+    <p class="setup-note">The Python server handles ONNX inference and streams the annotated feed</p>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ── Header ── -->
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      SAFARI<span style="color:var(--accent)">IQ</span>
+      <span style="font-size:11px;font-weight:400;color:var(--text3);margin-left:4px;font-family:var(--font-mono)">v2.1</span>
+    </div>
+    <div class="header-stats">
+      <div class="hstat">
+        <div class="hstat-val" id="hFps">0</div>
+        <div class="hstat-lbl">FPS</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val" id="hDetections">0</div>
+        <div class="hstat-lbl">Detections</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val" id="hFrames">0</div>
+        <div class="hstat-lbl">Frames</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val" id="hAlerts">0</div>
+        <div class="hstat-lbl">Alerts</div>
+      </div>
+    </div>
+    <div class="status-badge" id="statusBadge">
+      <div class="status-dot"></div>
+      <span id="statusText">CONNECTING</span>
+    </div>
+  </header>
+
+  <!-- ── Left Panel ── -->
+  <div class="panel-left">
+
+    <div>
+      <div class="section-title">Safari Zone Map</div>
+      <div class="zone-map">
+        <canvas id="zoneCanvas" width="228" height="160"></canvas>
+        <div class="zone-grid" style="margin-top:8px">
+          <div class="zone-cell active" id="z1" onclick="selectZone(1)">
+            <div class="zone-count" id="zc1">0</div>
+            <div class="zone-name">North Gate</div>
+          </div>
+          <div class="zone-cell" id="z2" onclick="selectZone(2)">
+            <div class="zone-count" id="zc2">0</div>
+            <div class="zone-name">Savanna</div>
+          </div>
+          <div class="zone-cell" id="z3" onclick="selectZone(3)">
+            <div class="zone-count" id="zc3">0</div>
+            <div class="zone-name">Waterhole</div>
+          </div>
+          <div class="zone-cell" id="z4" onclick="selectZone(4)">
+            <div class="zone-count" id="zc4">0</div>
+            <div class="zone-name">South Forest</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Live Animals</div>
+      <div class="animal-grid" id="animalGrid">
+        <div style="font-size:12px;color:var(--text3);text-align:center;padding:20px 0">No animals detected</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Detection History</div>
+      <div class="chart-wrap">
+        <canvas id="histChart"></canvas>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">System Config</div>
+      <div>
+        <div class="config-row">
+          <span class="config-lbl">Model</span>
+          <span class="config-val">YOLOv8n</span>
+        </div>
+        <div class="config-row">
+          <span class="config-lbl">Resolution</span>
+          <span class="config-val">640×640</span>
+        </div>
+        <div class="config-row">
+          <span class="config-lbl">Threshold</span>
+          <span class="config-val" id="confThresh">0.45</span>
+        </div>
+        <div class="config-row">
+          <span class="config-lbl">Device</span>
+          <span class="config-val">ESP32-CAM</span>
+        </div>
+        <div class="config-row">
+          <span class="config-lbl">Uptime</span>
+          <span class="config-val" id="uptime">00:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Main Feed ── -->
+  <div class="main-center">
+    <div class="feed-area" id="feedArea">
+      <!-- Camera feed or placeholder -->
+      <img id="videoFeed" src="" style="display:none" alt="Camera Feed"/>
+      <div class="no-signal" id="noSignal">
+        <div class="no-signal-icon">📡</div>
+        <span>Waiting for camera stream...</span>
+        <span style="font-size:11px;color:var(--text3)">Connect to Python server to begin</span>
+      </div>
+      <div class="feed-overlay">
+        <div class="bracket tl"></div>
+        <div class="bracket tr"></div>
+        <div class="bracket bl"></div>
+        <div class="bracket br"></div>
+        <div class="scan-line"></div>
+        <div class="feed-info-bar">
+          <div>
+            <div class="feed-label">📷 ESP32-CAM · Zone 1 – North Gate</div>
+            <div class="feed-ts" id="feedTs">--:--:--</div>
+          </div>
+          <div style="display:flex;gap:8px" id="feedBadges"></div>
+        </div>
+      </div>
+    </div>
+    <div class="detection-bar" id="detectionBar">
+      <span style="font-size:11px;color:var(--text3);font-family:var(--font-mono);flex-shrink:0">LIVE DETECTIONS</span>
+      <span style="font-size:11px;color:var(--text3)" id="noDetMsg">No detections yet</span>
+    </div>
+  </div>
+
+  <!-- ── Right Panel ── -->
+  <div class="panel-right">
+
+    <div>
+      <div class="section-title">Wildlife Alerts</div>
+      <div class="alert-log" id="alertLog">
+        <div style="font-size:12px;color:var(--text3);text-align:center;padding:16px 0">No alerts yet</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Session Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-val" id="mTotal">0</div>
+          <div class="metric-lbl">Total Seen</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="mSpecies">0</div>
+          <div class="metric-lbl">Species</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="mPeakFps">0</div>
+          <div class="metric-lbl">Peak FPS</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="mWildlife">0</div>
+          <div class="metric-lbl">Wildlife</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">FPS Monitor</div>
+      <div class="chart-wrap">
+        <canvas id="fpsChart"></canvas>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Visitor Analytics</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="config-row">
+          <span class="config-lbl">Jeeps Active</span>
+          <span class="config-val" style="color:var(--blue)">3</span>
+        </div>
+        <div class="config-row">
+          <span class="config-lbl">Visitors Today</span>
+          <span class="config-val" style="color:var(--blue)" id="vCount">0</span>
+        </div>
+        <div class="config-row">
+          <span class="config-lbl">Peak Hour</span>
+          <span class="config-val" style="color:var(--blue)">10:00–12:00</span>
+        </div>
+        <div class="config-row">
+          <span class="config-lbl">Alert SMS Sent</span>
+          <span class="config-val" id="smsSent">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Conservation Log</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6" id="conservLog">
+        Session started. AI monitoring active.<br/>
+        Waiting for wildlife detections...
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+// ====== State ======
+let SERVER = 'http://localhost:8000';
+let ws = null;
+let startTime = Date.now();
+let totalDetections = 0;
+let speciesSeen = new Set();
+let wildlifeCount = 0;
+let peakFps = 0;
+let alertCount = 0;
+let smsSent = 0;
+let fpsHistory = new Array(30).fill(0);
+let detHistory = new Array(30).fill(0);
+let sessionLog = [];
+let selectedZone = 1;
+let zoneCounts = [0,0,0,0];
+
+const WILDLIFE_CLASSES = new Set(['bird','cat','dog','horse','sheep','cow','elephant','bear','zebra','giraffe']);
+const ANIMAL_EMOJIS = {
+  bird:'🦅', cat:'🐆', dog:'🐕', horse:'🦓', sheep:'🐑',
+  cow:'🐄', elephant:'🐘', bear:'🐻', zebra:'🦓', giraffe:'🦒',
+  person:'👤', default:'🔍'
+};
+
+// ====== Setup ======
+function connectServer() {
+  const ip = document.getElementById('serverIpInput').value.trim();
+  if (!ip) return;
+  SERVER = ip;
+  document.getElementById('setupModal').style.display = 'none';
+  initDashboard();
+}
+
+function initDashboard() {
+  document.getElementById('videoFeed').src = SERVER + '/video_feed';
+  document.getElementById('videoFeed').style.display = 'block';
+  document.getElementById('noSignal').style.display = 'none';
+  document.getElementById('videoFeed').onerror = () => {
+    document.getElementById('noSignal').style.display = 'flex';
+    document.getElementById('videoFeed').style.display = 'none';
+    setStatus('error', 'STREAM ERROR');
+  };
+  connectWS();
+  initCharts();
+  startTicker();
+  drawZoneMap();
+}
+
+// ====== WebSocket ======
+function connectWS() {
+  const wsUrl = SERVER.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
+  ws = new WebSocket(wsUrl);
+  ws.onopen = () => setStatus('ok', 'LIVE');
+  ws.onclose = () => { setStatus('error', 'RECONNECTING'); setTimeout(connectWS, 3000); };
+  ws.onerror = () => setStatus('error', 'WS ERROR');
+  ws.onmessage = (e) => {
+    try { handleMessage(JSON.parse(e.data)); } catch(err) {}
+  };
+}
+
+function setStatus(type, text) {
+  const badge = document.getElementById('statusBadge');
+  badge.className = 'status-badge' + (type === 'error' ? ' error' : '');
+  document.getElementById('statusText').textContent = text;
+}
+
+// ====== Message Handling ======
+function handleMessage(data) {
+  if (data.type !== 'detection') return;
+  const dets = data.detections || [];
+  const fps = data.fps || 0;
+
+  // Update FPS
+  document.getElementById('hFps').textContent = fps;
+  if (fps > peakFps) { peakFps = fps; document.getElementById('mPeakFps').textContent = fps; }
+  fpsHistory.push(fps); fpsHistory.shift();
+  fpsChart.data.datasets[0].data = [...fpsHistory];
+  fpsChart.update('none');
+
+  // Detection count
+  totalDetections += dets.length;
+  detHistory.push(dets.length); detHistory.shift();
+  histChart.data.datasets[0].data = [...detHistory];
+  histChart.update('none');
+
+  document.getElementById('hDetections').textContent = dets.length;
+  document.getElementById('mTotal').textContent = totalDetections;
+
+  // Frame count
+  if (data.frame_count) document.getElementById('hFrames').textContent = data.frame_count;
+
+  // Species
+  dets.forEach(d => speciesSeen.add(d.class_name));
+  document.getElementById('mSpecies').textContent = speciesSeen.size;
+
+  // Wildlife count
+  const wl = dets.filter(d => WILDLIFE_CLASSES.has(d.class_name));
+  if (wl.length > 0) { wildlifeCount += wl.length; document.getElementById('mWildlife').textContent = wildlifeCount; }
+
+  // Update animal grid
+  updateAnimalGrid(dets);
+
+  // Bottom bar
+  updateDetectionBar(dets);
+
+  // Feed badges
+  updateFeedBadges(dets);
+
+  // Alerts
+  if (data.alert_log) updateAlerts(data.alert_log);
+
+  // Zone sim (random distribution of detections across zones)
+  if (dets.length > 0) {
+    zoneCounts[selectedZone-1] += dets.length;
+    document.getElementById('zc' + selectedZone).textContent = zoneCounts[selectedZone-1];
+  }
+
+  // Visitor sim
+  document.getElementById('vCount').textContent = Math.floor(totalDetections * 0.4 + 12);
+
+  // Timestamp
+  document.getElementById('feedTs').textContent = new Date().toLocaleTimeString();
+}
+
+function updateAnimalGrid(dets) {
+  const grid = document.getElementById('animalGrid');
+  if (!dets.length) {
+    grid.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px 0">No animals in frame</div>';
+    return;
+  }
+  // Group by class
+  const groups = {};
+  dets.forEach(d => {
+    if (!groups[d.class_name]) groups[d.class_name] = { count: 0, maxConf: 0 };
+    groups[d.class_name].count++;
+    groups[d.class_name].maxConf = Math.max(groups[d.class_name].maxConf, d.confidence);
+  });
+  grid.innerHTML = Object.entries(groups).map(([name, info]) => `
+    <div class="animal-tag ${WILDLIFE_CLASSES.has(name) ? 'active' : ''}">
+      <div class="animal-tag-left">
+        <span class="animal-icon" style="font-size:18px">${ANIMAL_EMOJIS[name] || ANIMAL_EMOJIS.default}</span>
+        <div>
+          <div class="animal-name">${name}</div>
+          <div class="animal-count">×${info.count}</div>
+        </div>
+      </div>
+      <div class="animal-conf">${(info.maxConf*100).toFixed(0)}%</div>
+    </div>
+  `).join('');
+}
+
+function updateDetectionBar(dets) {
+  const bar = document.getElementById('detectionBar');
+  const noMsg = document.getElementById('noDetMsg');
+  if (!dets.length) {
+    noMsg.style.display = 'block'; return;
+  }
+  noMsg.style.display = 'none';
+  const items = dets.slice(0,6).map(d => `
+    <div class="det-item ${WILDLIFE_CLASSES.has(d.class_name) ? 'wildlife' : ''}">
+      ${ANIMAL_EMOJIS[d.class_name] || ANIMAL_EMOJIS.default}
+      <span>${d.class_name}</span>
+      <span class="det-conf">${(d.confidence*100).toFixed(0)}%</span>
+    </div>
+  `).join('');
+  bar.innerHTML = `<span style="font-size:11px;color:var(--text3);font-family:var(--font-mono);flex-shrink:0">LIVE DETECTIONS</span>${items}`;
+}
+
+function updateFeedBadges(dets) {
+  const area = document.getElementById('feedBadges');
+  if (!dets.length) { area.innerHTML=''; return; }
+  const wl = dets.filter(d => WILDLIFE_CLASSES.has(d.class_name));
+  let html = '';
+  if (wl.length) html += `<div style="background:rgba(34,197,94,0.2);border:1px solid #22c55e;border-radius:4px;padding:2px 8px;font-family:var(--font-mono);font-size:10px;color:#4cff7e">🦒 WILDLIFE ×${wl.length}</div>`;
+  area.innerHTML = html;
+}
+
+function updateAlerts(alerts) {
+  alertCount = alerts.length;
+  document.getElementById('hAlerts').textContent = alertCount;
+  const log = document.getElementById('alertLog');
+  if (!alerts.length) {
+    log.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px 0">No alerts yet</div>';
+    return;
+  }
+  log.innerHTML = alerts.slice(0,8).map(a => `
+    <div class="alert-item ${a.confidence > 0.7 ? 'high' : ''}">
+      <span class="alert-time">${a.time}</span>
+      <span class="alert-animal">${ANIMAL_EMOJIS[a.animal] || '🔍'} ${a.animal}</span>
+      <span class="alert-conf-badge">${(a.confidence*100).toFixed(0)}%</span>
+    </div>
+  `).join('');
+
+  // Conservation log
+  const latestAnimal = alerts[0]?.animal;
+  if (latestAnimal && WILDLIFE_CLASSES.has(latestAnimal)) {
+    const conserv = document.getElementById('conservLog');
+    conserv.innerHTML = `
+      Session active — AI monitoring live.<br/>
+      Last wildlife: <strong style="color:var(--accent)">${latestAnimal}</strong> at ${alerts[0].time}<br/>
+      Total species today: ${speciesSeen.size}<br/>
+      Conservation score: <span style="color:var(--accent)">HIGH</span>
+    `;
+  }
+}
+
+// ====== Zone Map Canvas ======
+function drawZoneMap() {
+  const canvas = document.getElementById('zoneCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  ctx.fillStyle = '#0a1a0c';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid lines
+  ctx.strokeStyle = '#1a3020';
+  ctx.lineWidth = 0.5;
+  for(let x=0;x<W;x+=20){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=20){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  // Zone outlines
+  const zones = [
+    {x:10,y:10,w:100,h:65,label:'N.Gate',color:'#22c55e'},
+    {x:120,y:10,w:100,h:65,label:'Savanna',color:'#fbbf24'},
+    {x:10,y:85,w:100,h:65,label:'Waterhole',color:'#38bdf8'},
+    {x:120,y:85,w:100,h:65,label:'S.Forest',color:'#a78bfa'},
+  ];
+
+  zones.forEach((z,i) => {
+    ctx.strokeStyle = z.color;
+    ctx.lineWidth = selectedZone === i+1 ? 2 : 0.8;
+    ctx.fillStyle = selectedZone === i+1 ? z.color+'22' : z.color+'0a';
+    ctx.beginPath();
+    ctx.roundRect(z.x,z.y,z.w,z.h,4);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = z.color;
+    ctx.font = '10px Space Mono, monospace';
+    ctx.fillText(z.label, z.x+6, z.y+16);
+  });
+
+  // Jeep icons (simulated)
+  const jeeps = [{x:60,y:45},{x:170,y:110},{x:40,y:120}];
+  jeeps.forEach(j => {
+    ctx.fillStyle = '#4cff7e';
+    ctx.beginPath();
+    ctx.arc(j.x, j.y, 5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(76,255,126,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(j.x, j.y, 10, 0, Math.PI*2);
+    ctx.stroke();
+  });
+
+  // Active camera marker
+  ctx.fillStyle = '#38bdf8';
+  ctx.beginPath();
+  ctx.arc(55, 40, 4, 0, Math.PI*2);
+  ctx.fill();
+  ctx.font = '9px Space Mono, monospace';
+  ctx.fillStyle = '#38bdf8';
+  ctx.fillText('📷', 44, 30);
+}
+
+function selectZone(z) {
+  selectedZone = z;
+  document.querySelectorAll('.zone-cell').forEach((el,i) => {
+    el.className = 'zone-cell' + (i+1===z?' active':'');
+  });
+  drawZoneMap();
+}
+
+// ====== Charts ======
+let fpsChart, histChart;
+function initCharts() {
+  const chartDefaults = {
+    type:'line',
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{display:false},
+        y:{display:false}
+      },
+      elements:{point:{radius:0},line:{tension:0.4,borderWidth:2}}
+    }
+  };
+
+  fpsChart = new Chart(document.getElementById('fpsChart'), {
+    ...chartDefaults,
+    data:{
+      labels: new Array(30).fill(''),
+      datasets:[{data:[...fpsHistory],borderColor:'#4cff7e',fill:true,backgroundColor:'rgba(76,255,126,0.06)'}]
+    }
+  });
+
+  histChart = new Chart(document.getElementById('histChart'), {
+    ...chartDefaults,
+    data:{
+      labels: new Array(30).fill(''),
+      datasets:[{data:[...detHistory],borderColor:'#38bdf8',fill:true,backgroundColor:'rgba(56,189,248,0.06)'}]
+    }
+  });
+}
+
+// ====== Ticker ======
+function startTicker() {
+  setInterval(() => {
+    const elapsed = Math.floor((Date.now()-startTime)/1000);
+    const mm = String(Math.floor(elapsed/60)).padStart(2,'0');
+    const ss = String(elapsed%60).padStart(2,'0');
+    document.getElementById('uptime').textContent = mm+':'+ss;
+    drawZoneMap();
+  }, 1000);
+
+  // Fallback poll if no WS
+  setInterval(async () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      try {
+        const r = await fetch(SERVER + '/api/status');
+        const d = await r.json();
+        setStatus('ok','POLLING');
+        handleMessage({type:'detection',...d});
+      } catch(e) {}
+    }
+  }, 2000);
+}
+
+// Allow connecting without setup modal in localhost
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  document.getElementById('serverIpInput').value = 'http://localhost:8000';
+}
+</script>
+</body>
+</html>

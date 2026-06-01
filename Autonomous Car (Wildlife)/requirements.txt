@@ -1,0 +1,9 @@
+# Safari Animal Detection - Python Requirements
+fastapi
+uvicorn
+opencv-python
+onnxruntime
+numpy
+websockets
+aiohttp
+pillow
